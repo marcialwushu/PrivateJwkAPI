@@ -1,0 +1,6 @@
+@PrivateJwk_HostAddress = http://localhost:5266
+
+GET {{PrivateJwk_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
