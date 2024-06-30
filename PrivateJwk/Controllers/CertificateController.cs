@@ -39,10 +39,28 @@ namespace PrivateJwk.Controllers
 
             // Adicionar informações do certificado nos headers da resposta
             Response.Headers.Add("X-Certificate-Expiration", cert.NotAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"));
-            Response.Headers.Add("X-Certificate-Thumbprint", cert.Thumbprint);
-            Response.Headers.Add("X-Certificate-Serial-Number", cert.SerialNumber);
+
+            // Converter thumbprint para Base64 URL-safe
+            string thumbprintBase64Url = Base64UrlEncode(cert.GetCertHash());
+
+            // Adicionar thumbprint Base64 URL-safe nos headers da resposta
+            Response.Headers.Add("X-Certificate-Thumbprint", thumbprintBase64Url);
+
+            // Obter número serial do certificado como hexadecimal
+            string serialNumberHex = cert.GetSerialNumberString();
+
+            // Adicionar número serial hexadecimal nos headers da resposta
+            Response.Headers.Add("X-Certificate-Serial-Number", serialNumberHex);
 
             return Ok(rawData);
+        }
+
+        private string Base64UrlEncode(byte[] bytes)
+        {
+            return Convert.ToBase64String(bytes)
+                          .Replace('+', '-')
+                          .Replace('/', '_')
+                          .TrimEnd('=');
         }
     }
 }
