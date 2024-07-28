@@ -1,5 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using PrivateJwk.Extensions;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Security.Cryptography.X509Certificates;
@@ -31,10 +33,21 @@ namespace PrivateJwk.Controllers
             var activitySource = DiagnosticConfig.ActivitySource.StartActivity("CertificateController.Get");
             long initialMemory = GC.GetTotalMemory(false);
 
+            using var newActivity = DiagnosticConfig.ActivitySource.StartActivitywithTags(
+                    DiagnosticsNames.ServiceName, new()
+                    {
+                        new(DiagnosticsNames.RequestCounter, RequestCounter),
+                        new(DiagnosticsNames.RequestDuration, RequestDuration)
+                    } 
+                );
+
             try
             {
                 activitySource?.SetTag("http.method", "GET");
                 activitySource?.SetTag("http.url", HttpContext.Request.Path);
+
+                HttpContext httpContext = HttpContext;
+                var aspNetActivity = httpContext.Features.Get<IHttpActivityFeature>()?.Activity;
 
                 string certPath = _configuration["AppSettings:CertPfxPath"];
                 string certPassword = _configuration["AppSettings:CertPfxPassword"];
@@ -53,11 +66,15 @@ namespace PrivateJwk.Controllers
                 }
                 catch (Exception ex)
                 {
+                    newActivity?.SetTag(DiagnosticsNames.RequestDuration, stopwatch.Elapsed.TotalMilliseconds);
+                    newActivity?.SetTag(DiagnosticsNames.ServiceName, newActivity.Id);
                     Activity.Current?.SetTag("CertificateExcption", ex.Message);
                     Activity.Current?.SetTag("CertificateExMsg", "Erro ao carregar certificado PFX");
                     Activity.Current?.SetTag("CertificateExSource", ex.Source);
                     LogException(ex, stopwatch.Elapsed.TotalMilliseconds, activity, initialMemory);
                     return StatusCode(500, new { Message = "Erro ao carregar certificado PFX", Exception = ex.Message, StackTrace = ex.StackTrace });
+
+                    aspNetActivity.ActivityTraceFlags |= ActivityTraceFlags.Recorded;
                 }
 
                 byte[] rawData = cert.RawData;
@@ -82,6 +99,7 @@ namespace PrivateJwk.Controllers
                 Activity.Current?.SetTag("x.certificate.expiration", cert.NotAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"));
 
                 activitySource?.SetTag("http.status_code", 200);
+                aspNetActivity.AddBaggage("x.certificate.thumbprint", thumbprintBase64Url);
 
                 return Ok(rawData);
             }
