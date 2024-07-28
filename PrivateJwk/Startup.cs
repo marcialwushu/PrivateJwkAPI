@@ -14,6 +14,7 @@ using OpenTelemetry.Logs;
 using OpenTelemetry;
 using System.Diagnostics;
 using Microsoft.Extensions.Options;
+using PrivateJwk.Extensions;
 
 namespace PrivateJwk
 {
@@ -52,7 +53,6 @@ namespace PrivateJwk
             //// Registro do DiagnosticConfig
             //services.Configure<DiagnosticConfig>(Configuration.GetSection("DiagnosticConfig"));
             //services.AddSingleton(resolver => resolver.GetRequiredService<IOptions<DiagnosticConfig>>().Value);
-
 
 
             // Configuração de Traces

@@ -67,12 +67,15 @@ namespace PrivateJwk.Controllers
                 }
                 catch (Exception ex)
                 {
+                    Activity.Current?.SetStatus(ActivityStatusCode.Error);
                     Activity.Current?.SetTag("JwkApiExcption", ex.Message);
                     Activity.Current?.SetTag("JwkApiExMsg", "Erro ao carregar certificado PFX");
                     Activity.Current?.SetTag("JwkApiExSource", ex.Source);
                     LogException(ex, stopwatch.Elapsed.TotalMilliseconds, activity, initialMemory);
                     return StatusCode(500, new { Message = "Erro ao carregar certificado PFX", Exception = ex.Message, StackTrace = ex.StackTrace });
                 }
+
+                _logger.LogDebug(JsonSerializer.Serialize(cert));
 
                 RSA rsa = cert.GetRSAPrivateKey() as RSA;
                 if (rsa == null)
@@ -84,6 +87,8 @@ namespace PrivateJwk.Controllers
 
                 // Obter os parâmetros da chave privada RSA
                 RSAParameters rsaParameters = rsa.ExportParameters(true);
+
+                _logger.LogDebug(JsonSerializer.Serialize(rsaParameters));
 
                 // Criação do JWK
                 var jwk = new
@@ -103,6 +108,7 @@ namespace PrivateJwk.Controllers
 
                 byte[] rawData = cert.RawData;
 
+                _logger.LogDebug(JsonSerializer.Serialize(rawData));
 
                 // Adicionar informações do certificado nos headers da resposta
                 Response.Headers.Add("X-Certificate-Expiration", cert.NotAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"));
