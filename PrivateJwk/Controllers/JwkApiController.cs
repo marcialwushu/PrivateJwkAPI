@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Diagnostics.Metrics;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Net;
 
 namespace PrivateJwk.Controllers
 {
@@ -31,10 +32,14 @@ namespace PrivateJwk.Controllers
             var stopwatch = Stopwatch.StartNew();
             var activity = Activity.Current;
             var activitySource = DiagnosticConfig.ActivitySource.StartActivity("JwkApiController.Get");
+            long initialMemory = GC.GetTotalMemory(false);
 
 
             try
             {
+                activitySource?.SetTag("http.method", "GET");
+                activitySource?.SetTag("http.url", HttpContext.Request.Path);
+
                 string certPath = _configuration["AppSettings:CertPfxPath"];
                 string certPassword = _configuration["AppSettings:CertPfxPassword"];
 
@@ -52,19 +57,19 @@ namespace PrivateJwk.Controllers
                 }
                 catch (Exception ex)
                 {
-                    Activity.Current?.SetTag("JwkApi", ex.Message);
-                    Activity.Current?.SetTag("JwkApi", "Erro ao carregar certificado PFX");
-                    Activity.Current?.SetTag("JwkApi", ex.Source);
-                    LogException(ex, stopwatch.Elapsed.TotalMilliseconds, activity);
-                    return StatusCode(500, $"Erro ao carregar certificado PFX: {ex.Message}");
+                    Activity.Current?.SetTag("JwkApiExcption", ex.Message);
+                    Activity.Current?.SetTag("JwkApiExMsg", "Erro ao carregar certificado PFX");
+                    Activity.Current?.SetTag("JwkApiExSource", ex.Source);
+                    LogException(ex, stopwatch.Elapsed.TotalMilliseconds, activity, initialMemory);
+                    return StatusCode(500, new { Message = "Erro ao carregar certificado PFX", Exception = ex.Message, StackTrace = ex.StackTrace });
                 }
 
                 RSA rsa = cert.GetRSAPrivateKey() as RSA;
                 if (rsa == null)
                 {
                     var ex = new InvalidOperationException("Não foi possível obter a chave privada RSA do certificado.");
-                    LogException(ex, stopwatch.Elapsed.TotalMilliseconds, activity);
-                    return StatusCode(500, "Não foi possível obter a chave privada RSA do certificado.");
+                    LogException(ex, stopwatch.Elapsed.TotalMilliseconds, activity, initialMemory);
+                    return StatusCode(400, new { Message = "Não foi possível obter a chave privada RSA do certificado.", StatusCode = HttpStatusCode.BadRequest });
                 }
 
                 // Obter os parâmetros da chave privada RSA
@@ -104,25 +109,36 @@ namespace PrivateJwk.Controllers
                 // Adicionar número serial hexadecimal nos headers da resposta
                 Response.Headers.Add("X-Certificate-Serial-Number", serialNumberHex);
 
-                Activity.Current?.SetTag("JwkApi", thumbprintBase64Url);
-                Activity.Current?.SetTag("JwkApi", serialNumberHex);
-                Activity.Current?.SetTag("JwkApi", cert.NotAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+                Activity.Current?.SetTag("X-Certificate-Thumbprint", thumbprintBase64Url);
+                Activity.Current?.SetTag("X-Certificate-Serial-Number", serialNumberHex);
+                Activity.Current?.SetTag("X-Certificate-Expiration", cert.NotAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+
+                activitySource?.SetTag("http.status_code", 200);
                 return Ok(rawData);
             }
             catch (Exception ex)
             {
-                LogException(ex, stopwatch.Elapsed.TotalMilliseconds, activity);
-                return StatusCode(500, "Erro inesperado ao processar a solicitação.");
+                activitySource?.SetTag("error", true);
+                activitySource?.SetTag("error.message", ex.Message);
+                LogException(ex, stopwatch.Elapsed.TotalMilliseconds, activity, initialMemory);
+                return StatusCode(500, new { Message = "Erro inesperado ao processar a solicitação" });
             }
             finally
             {
                 stopwatch.Stop();
+                long finalMemory = GC.GetTotalMemory(false);
+                long memoryAllocated = finalMemory - initialMemory;
+
                 RequestCounter.Add(1);
                 RequestDuration.Record(stopwatch.Elapsed.TotalMilliseconds);
 
                 DiagnosticConfig.RequestCounter.Add(1);
                 DiagnosticConfig.RequestDuration.Record(stopwatch.Elapsed.TotalMilliseconds);
 
+                _logger.LogInformation("Memory allocated during request: {MemoryAllocated} bytes", memoryAllocated);
+                AddRequestMetrics(activitySource, stopwatch.Elapsed.TotalMilliseconds);
+
+                activitySource?.Stop();
                 activity?.Stop();
             }
 
@@ -146,8 +162,11 @@ namespace PrivateJwk.Controllers
             }
         }
 
-        private void LogException(Exception ex, double requestDuration, Activity activity)
+        private void LogException(Exception ex, double requestDuration, Activity activity, long initialMemory)
         {
+            long finalMemory = GC.GetTotalMemory(false);
+            long memoryAllocated = finalMemory - initialMemory;
+
             var logDetails = new
             {
                 Timestamp = DateTime.UtcNow,
@@ -155,11 +174,14 @@ namespace PrivateJwk.Controllers
                 RequestMethod = HttpContext.Request.Method,
                 ClientIp = HttpContext.Connection.RemoteIpAddress?.ToString(),
                 Duration = requestDuration,
+                MemoryAllocated = memoryAllocated,
                 Exception = new CustomExceptionDetails(ex),
                 EventId = activity?.Id,
                 TraceId = activity?.TraceId.ToString(),
                 SpanId = activity?.SpanId.ToString()
             };
+
+            AddRequestMetrics(activity, requestDuration);
 
             _logger.LogError(JsonSerializer.Serialize(logDetails));
         }
