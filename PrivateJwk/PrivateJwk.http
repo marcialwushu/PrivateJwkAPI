@@ -4,3 +4,11 @@ GET {{PrivateJwk_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+GET {{PrivateJwk_HostAddress}}/api/jwk/
+Accept: application/json
+
+###
+
+GET {{PrivateJwk_HostAddress}}/api/certificate/
+Accept: application/json
