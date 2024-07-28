@@ -61,6 +61,7 @@ namespace PrivateJwk
                 .WithTracing(tracing => tracing
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
+                    .AddInstrumentation((activitySource) => new DiagnosticSourceInstrumentation(activitySource))
                     .AddSource("PrivateJwk")
                     .SetSampler(new AlwaysOnSampler())
                     .AddProcessor(new SimpleActivityExportProcessor(new JsonConsoleExporter<Activity>()))

@@ -109,9 +109,9 @@ namespace PrivateJwk.Controllers
                 // Adicionar número serial hexadecimal nos headers da resposta
                 Response.Headers.Add("X-Certificate-Serial-Number", serialNumberHex);
 
-                Activity.Current?.SetTag("X-Certificate-Thumbprint", thumbprintBase64Url);
-                Activity.Current?.SetTag("X-Certificate-Serial-Number", serialNumberHex);
-                Activity.Current?.SetTag("X-Certificate-Expiration", cert.NotAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+                Activity.Current?.SetTag("x.certificate.thumbprint", thumbprintBase64Url);
+                Activity.Current?.SetTag("x.certificate.serial.number", serialNumberHex);
+                Activity.Current?.SetTag("x.certificate.expiration", cert.NotAfter.ToString("yyyy-MM-ddTHH:mm:ssZ"));
 
                 activitySource?.SetTag("http.status_code", 200);
                 return Ok(rawData);
@@ -166,6 +166,7 @@ namespace PrivateJwk.Controllers
         {
             long finalMemory = GC.GetTotalMemory(false);
             long memoryAllocated = finalMemory - initialMemory;
+            
 
             var logDetails = new
             {
@@ -184,6 +185,11 @@ namespace PrivateJwk.Controllers
             AddRequestMetrics(activity, requestDuration);
 
             _logger.LogError(JsonSerializer.Serialize(logDetails));
+
+            DiagnosticConfig.RequestCounter.Add(1);
+            DiagnosticConfig.RequestDuration.Record(requestDuration);
+
+            activity?.Stop();
         }
 
         public static void AddRequestMetrics(Activity activity, double requestdurtaion)
