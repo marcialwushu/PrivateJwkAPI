@@ -45,6 +45,16 @@ namespace PrivateJwk.Controllers
 
                 if (string.IsNullOrEmpty(certPath) || string.IsNullOrEmpty(certPassword))
                 {
+                    Activity.Current?.AddEvent(new ActivityEvent(
+                            "ValidateFailed",
+                            tags: new ActivityTagsCollection(new List<KeyValuePair<string, object?>>
+                            {
+                                new("model.type", nameof(JwkApiController)),
+                                new("model.method", nameof(Get)),
+                                new("model.validation", "Certificado PFX ou senha não configurados corretamente."),
+                                new("http.status_code", 400)
+                            })
+                        ));
                     _logger.LogWarning("Certificado PFX ou senha não configurados corretamente.");
                     return BadRequest("Certificado PFX ou senha não configurados corretamente.");
                 }
